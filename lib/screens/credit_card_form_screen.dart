@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'dart:io';
 import '../models/credit_card_model.dart';
 import '../services/credit_card_storage_service.dart';
 import '../services/banned_countries_service.dart';
@@ -51,40 +53,198 @@ class _CreditCardFormScreenState extends State<CreditCardFormScreen> {
 
   Future<void> _scanCreditCard() async {
     try {
-      // Request camera permission
-      final status = await Permission.camera.request();
-      if (!status.isGranted) {
-        _showMessage('Camera permission is required to take photos', true);
+      // Check current permission status
+      var status = await Permission.camera.status;
+      
+      if (status.isDenied) {
+        // Request permission
+        status = await Permission.camera.request();
+      }
+      
+      if (status.isDenied) {
+        _showMessage('Camera permission is required to scan credit cards', true);
         return;
       }
+      
+      if (status.isPermanentlyDenied) {
+        // Show dialog to open app settings
+        _showPermissionDialog();
+        return;
+      }
+
+      _showMessage('Opening camera...', false);
 
       final ImagePicker picker = ImagePicker();
       final XFile? image = await picker.pickImage(
         source: ImageSource.camera,
         preferredCameraDevice: CameraDevice.rear,
+        imageQuality: 85,
       );
 
       if (image != null) {
-        // For now, show a dialog asking user to manually enter the card number
-        // In a production app, you would use OCR to extract the card number
-        _showCardScanDialog();
+        _showMessage('Processing image...', false);
+        await _processScannedImage(image);
       }
     } catch (e) {
       _showMessage('Failed to access camera: ${e.toString()}', true);
     }
   }
 
-  void _showCardScanDialog() {
+  Future<void> _processScannedImage(XFile image) async {
+    try {
+      final inputImage = InputImage.fromFilePath(image.path);
+      final textRecognizer = TextRecognizer();
+      
+      final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
+      
+      // Extract credit card number from recognized text
+      String? cardNumber = _extractCardNumber(recognizedText.text);
+      
+      await textRecognizer.close();
+      
+      if (cardNumber != null && cardNumber.isNotEmpty) {
+        setState(() {
+          _cardNumberController.text = cardNumber;
+          _detectedCardType = CreditCardModel.inferCardType(cardNumber);
+        });
+        _showMessage('Card number detected successfully!', false);
+      } else {
+        // Fallback to manual entry
+        _showCardScanDialog(recognizedText.text);
+      }
+      
+      // Clean up the temporary image file
+      final file = File(image.path);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (e) {
+      _showMessage('Failed to process image: ${e.toString()}', true);
+      // Fallback to manual entry
+      _showCardScanDialog('');
+    }
+  }
+
+  String? _extractCardNumber(String text) {
+    // Remove all non-digit characters and find potential card numbers
+    final cleanText = text.replaceAll(RegExp(r'[^\d\s]'), ' ');
+    final lines = cleanText.split('\n');
+    
+    for (String line in lines) {
+      // Look for sequences of 13-19 digits (with or without spaces)
+      final digitSequences = line.split(' ').where((s) => s.isNotEmpty);
+      
+      for (String sequence in digitSequences) {
+        final digits = sequence.replaceAll(' ', '');
+        
+        // Check if it's a valid length for a credit card
+        if (digits.length >= 13 && digits.length <= 19) {
+          // Basic validation - check if it looks like a credit card number
+          if (_isValidCardNumberFormat(digits)) {
+            return _formatCardNumber(digits);
+          }
+        }
+      }
+      
+      // Also check for numbers with spaces (like "4111 1111 1111 1111")
+      final spacedNumbers = RegExp(r'\b\d{4}\s+\d{4}\s+\d{4}\s+\d{4}\b').allMatches(line);
+      for (Match match in spacedNumbers) {
+        final cardNum = match.group(0)?.replaceAll(' ', '') ?? '';
+        if (_isValidCardNumberFormat(cardNum)) {
+          return _formatCardNumber(cardNum);
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  bool _isValidCardNumberFormat(String cardNumber) {
+    // Basic checks for credit card number format
+    if (cardNumber.length < 13 || cardNumber.length > 19) return false;
+    
+    // Check if it starts with known card prefixes
+    final firstDigit = cardNumber[0];
+    final firstTwo = cardNumber.length >= 2 ? cardNumber.substring(0, 2) : '';
+    
+    // Visa starts with 4
+    if (firstDigit == '4') return true;
+    
+    // Mastercard starts with 5 or 2221-2720
+    if (firstDigit == '5') return true;
+    if (cardNumber.length >= 4) {
+      final firstFour = int.tryParse(cardNumber.substring(0, 4)) ?? 0;
+      if (firstFour >= 2221 && firstFour <= 2720) return true;
+    }
+    
+    // American Express starts with 34 or 37
+    if (firstTwo == '34' || firstTwo == '37') return true;
+    
+    // Discover starts with 6011, 65, or 644-649
+    if (cardNumber.startsWith('6011') || cardNumber.startsWith('65')) return true;
+    if (cardNumber.length >= 3) {
+      final firstThree = int.tryParse(cardNumber.substring(0, 3)) ?? 0;
+      if (firstThree >= 644 && firstThree <= 649) return true;
+    }
+    
+    return false;
+  }
+
+  String _formatCardNumber(String cardNumber) {
+    String formatted = '';
+    for (int i = 0; i < cardNumber.length; i += 4) {
+      if (i + 4 < cardNumber.length) {
+        formatted += '${cardNumber.substring(i, i + 4)} ';
+      } else {
+        formatted += cardNumber.substring(i);
+      }
+    }
+    return formatted.trim();
+  }
+
+  void _showPermissionDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Camera Permission Required'),
+        content: const Text(
+          'This app needs camera access to scan credit cards. Please enable camera permission in your device settings.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              openAppSettings();
+            },
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCardScanDialog(String detectedText) {
     final TextEditingController scanController = TextEditingController();
     
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Enter Card Number'),
+        title: const Text('Card Number Not Detected'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Please enter the card number from the photo:'),
+            const Text('Could not automatically detect the card number. Please enter it manually:'),
+            if (detectedText.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Detected text: $detectedText',
+                style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+              ),
+            ],
             const SizedBox(height: 16),
             TextField(
               controller: scanController,
