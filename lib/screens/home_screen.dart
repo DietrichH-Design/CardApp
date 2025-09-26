@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../services/credit_card_storage_service.dart';
+import 'package:provider/provider.dart';
+import '../providers/credit_card_provider.dart';
 import 'credit_card_form_screen.dart';
 import 'credit_card_list_screen.dart';
 import 'banned_countries_screen.dart';
@@ -12,27 +13,10 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _totalCards = 0;
-  bool _isLoading = true;
-
   @override
   void initState() {
     super.initState();
-    _loadStats();
-  }
-
-  Future<void> _loadStats() async {
-    try {
-      final count = await CreditCardStorageService.instance.getCardsCount();
-      setState(() {
-        _totalCards = count;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-    }
+    // Provider is initialized in main.dart and loads data there.
   }
 
   void _navigateToAddCard() {
@@ -40,7 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(
         builder: (context) => const CreditCardFormScreen(),
       ),
-    ).then((_) => _loadStats()); // Refresh stats when returning
+    ).then((_) => context.read<CreditCardProvider>().refreshCounts());
   }
 
   void _navigateToCardList() {
@@ -48,7 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(
         builder: (context) => const CreditCardListScreen(),
       ),
-    ).then((_) => _loadStats()); // Refresh stats when returning
+    ).then((_) => context.read<CreditCardProvider>().refreshCounts());
   }
 
   void _navigateToBannedCountries() {
@@ -160,6 +144,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final totalCards = context.select<CreditCardProvider, int>((p) => p.totalCards);
+    final isLoading = context.select<CreditCardProvider, bool>((p) => p.isLoading);
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -217,14 +203,14 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            _isLoading
+                            isLoading
                                 ? const SizedBox(
                                     height: 20,
                                     width: 20,
                                     child: CircularProgressIndicator(strokeWidth: 2),
                                   )
                                 : Text(
-                                    _totalCards.toString(),
+                                    totalCards.toString(),
                                     style: const TextStyle(
                                       fontSize: 28,
                                       fontWeight: FontWeight.bold,
@@ -271,7 +257,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: Icons.credit_card,
                     color: Colors.blue,
                     onTap: _navigateToCardList,
-                    badge: _totalCards > 0 ? _totalCards.toString() : null,
+                    badge: totalCards > 0 ? totalCards.toString() : null,
                   ),
                   _buildFeatureCard(
                     title: 'Scan Card',

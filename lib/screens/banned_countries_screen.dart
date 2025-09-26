@@ -26,15 +26,16 @@ class _BannedCountriesScreenState extends State<BannedCountriesScreen> {
 
     try {
       final countries = await BannedCountriesService.instance.getBannedCountries();
+      if (!mounted) return;
       setState(() {
         _bannedCountries = countries;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
-      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error loading banned countries: ${e.toString()}'),
@@ -50,6 +51,7 @@ class _BannedCountriesScreenState extends State<BannedCountriesScreen> {
       showPhoneCode: false,
       onSelect: (Country country) async {
         await BannedCountriesService.instance.addBannedCountry(country.name);
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('${country.name} added to banned countries'),
@@ -102,6 +104,7 @@ class _BannedCountriesScreenState extends State<BannedCountriesScreen> {
 
     if (confirmed == true) {
       await BannedCountriesService.instance.removeBannedCountry(country);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('$country removed from banned countries'),
@@ -133,6 +136,7 @@ class _BannedCountriesScreenState extends State<BannedCountriesScreen> {
 
     if (confirmed == true) {
       await BannedCountriesService.instance.resetToDefault();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Banned countries list reset to default'),
@@ -165,6 +169,7 @@ class _BannedCountriesScreenState extends State<BannedCountriesScreen> {
 
     if (confirmed == true) {
       await BannedCountriesService.instance.clearAll();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('All banned countries cleared'),

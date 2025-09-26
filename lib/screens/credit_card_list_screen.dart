@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/credit_card_model.dart';
+import '../providers/credit_card_provider.dart';
 import '../services/credit_card_storage_service.dart';
 
 class CreditCardListScreen extends StatefulWidget {
@@ -10,42 +12,11 @@ class CreditCardListScreen extends StatefulWidget {
 }
 
 class _CreditCardListScreenState extends State<CreditCardListScreen> {
-  List<CreditCardModel> _cards = [];
-  bool _isLoading = true;
-  StorageStats? _stats;
-
   @override
   void initState() {
     super.initState();
-    _loadCards();
-  }
-
-  Future<void> _loadCards() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final cards = await CreditCardStorageService.instance.getStoredCards();
-      final stats = await CreditCardStorageService.instance.getStorageStats();
-      
-      setState(() {
-        _cards = cards;
-        _stats = stats;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error loading cards: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+    // Ensure data is fresh when opening this screen
+    Future.microtask(() => context.read<CreditCardProvider>().loadAll());
   }
 
   Future<void> _deleteCard(CreditCardModel card) async {
@@ -69,24 +40,15 @@ class _CreditCardListScreenState extends State<CreditCardListScreen> {
     );
 
     if (confirmed == true) {
-      final success = await CreditCardStorageService.instance.removeCard(card.uniqueId);
+      final success = await context.read<CreditCardProvider>().deleteCard(card.uniqueId);
       
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Credit card deleted successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        _loadCards();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to delete credit card'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success ? 'Credit card deleted successfully' : 'Failed to delete credit card'),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
     }
   }
 
@@ -111,14 +73,14 @@ class _CreditCardListScreenState extends State<CreditCardListScreen> {
     );
 
     if (confirmed == true) {
-      await CreditCardStorageService.instance.clearAllCards();
+      await context.read<CreditCardProvider>().clearAll();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('All credit cards cleared'),
           backgroundColor: Colors.green,
         ),
       );
-      _loadCards();
     }
   }
 
@@ -163,9 +125,8 @@ class _CreditCardListScreenState extends State<CreditCardListScreen> {
     return Icon(icon, color: color, size: 32);
   }
 
-  Widget _buildStatsCard() {
-    if (_stats == null) return const SizedBox.shrink();
-    
+  Widget _buildStatsCard(StorageStats? stats) {
+    if (stats == null) return const SizedBox.shrink();
     return Card(
       elevation: 2,
       margin: const EdgeInsets.all(16),
@@ -187,21 +148,21 @@ class _CreditCardListScreenState extends State<CreditCardListScreen> {
                 Expanded(
                   child: _buildStatItem(
                     'Total Cards',
-                    _stats!.totalCards.toString(),
+                    stats.totalCards.toString(),
                     Icons.credit_card,
                   ),
                 ),
                 Expanded(
                   child: _buildStatItem(
                     'Card Types',
-                    _stats!.cardTypeStats.length.toString(),
+                    stats.cardTypeStats.length.toString(),
                     Icons.category,
                   ),
                 ),
                 Expanded(
                   child: _buildStatItem(
                     'Countries',
-                    _stats!.countryStats.length.toString(),
+                    stats.countryStats.length.toString(),
                     Icons.public,
                   ),
                 ),
@@ -308,13 +269,17 @@ class _CreditCardListScreenState extends State<CreditCardListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<CreditCardProvider>();
+    final cards = provider.cards;
+    final isLoading = provider.isLoading;
+    final stats = provider.stats;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Stored Credit Cards'),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
-          if (_cards.isNotEmpty)
+          if (cards.isNotEmpty)
             PopupMenuButton<String>(
               onSelected: (value) {
                 if (value == 'clear_all') {
@@ -336,9 +301,9 @@ class _CreditCardListScreenState extends State<CreditCardListScreen> {
             ),
         ],
       ),
-      body: _isLoading
+      body: isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _cards.isEmpty
+          : cards.isEmpty
               ? const Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -367,15 +332,15 @@ class _CreditCardListScreenState extends State<CreditCardListScreen> {
                   ),
                 )
               : RefreshIndicator(
-                  onRefresh: _loadCards,
+                  onRefresh: () => context.read<CreditCardProvider>().loadAll(),
                   child: Column(
                     children: [
-                      _buildStatsCard(),
+                      _buildStatsCard(stats),
                       Expanded(
                         child: ListView.builder(
-                          itemCount: _cards.length,
+                          itemCount: cards.length,
                           itemBuilder: (context, index) {
-                            return _buildCardItem(_cards[index]);
+                            return _buildCardItem(cards[index]);
                           },
                         ),
                       ),

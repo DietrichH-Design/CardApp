@@ -6,8 +6,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'dart:io';
 import '../models/credit_card_model.dart';
-import '../services/credit_card_storage_service.dart';
 import '../services/banned_countries_service.dart';
+import 'package:provider/provider.dart';
+import '../providers/credit_card_provider.dart';
 
 class CreditCardFormScreen extends StatefulWidget {
   const CreditCardFormScreen({super.key});
@@ -62,16 +63,19 @@ class _CreditCardFormScreenState extends State<CreditCardFormScreen> {
       }
       
       if (status.isDenied) {
+        if (!mounted) return;
         _showMessage('Camera permission is required to scan credit cards', true);
         return;
       }
       
       if (status.isPermanentlyDenied) {
         // Show dialog to open app settings
+        if (!mounted) return;
         _showPermissionDialog();
         return;
       }
 
+      if (!mounted) return;
       _showMessage('Opening camera...', false);
 
       final ImagePicker picker = ImagePicker();
@@ -82,10 +86,12 @@ class _CreditCardFormScreenState extends State<CreditCardFormScreen> {
       );
 
       if (image != null) {
+        if (!mounted) return;
         _showMessage('Processing image...', false);
         await _processScannedImage(image);
       }
     } catch (e) {
+      if (!mounted) return;
       _showMessage('Failed to access camera: ${e.toString()}', true);
     }
   }
@@ -107,9 +113,11 @@ class _CreditCardFormScreenState extends State<CreditCardFormScreen> {
           _cardNumberController.text = cardNumber;
           _detectedCardType = CreditCardModel.inferCardType(cardNumber);
         });
+        if (!mounted) return;
         _showMessage('Card number detected successfully!', false);
       } else {
         // Fallback to manual entry
+        if (!mounted) return;
         _showCardScanDialog(recognizedText.text);
       }
       
@@ -119,9 +127,11 @@ class _CreditCardFormScreenState extends State<CreditCardFormScreen> {
         await file.delete();
       }
     } catch (e) {
-      _showMessage('Failed to process image: ${e.toString()}', true);
-      // Fallback to manual entry
-      _showCardScanDialog('');
+      if (mounted) {
+        _showMessage('Failed to process image: ${e.toString()}', true);
+        // Fallback to manual entry
+        _showCardScanDialog('');
+      }
     }
   }
 
@@ -334,7 +344,7 @@ class _CreditCardFormScreenState extends State<CreditCardFormScreen> {
       // Check if country is banned
       final countryValidation = await BannedCountriesService.instance.validateCountry(_selectedCountry);
       if (!countryValidation.isValid) {
-        _showMessage(countryValidation.message, true);
+        if (mounted) _showMessage(countryValidation.message, true);
         return;
       }
 
@@ -348,25 +358,27 @@ class _CreditCardFormScreenState extends State<CreditCardFormScreen> {
 
       // Validate the card
       if (!creditCard.isValid) {
-        _showMessage('Invalid credit card details. Please check the card number and CVV.', true);
+        if (mounted) _showMessage('Invalid credit card details. Please check the card number and CVV.', true);
         return;
       }
 
-      // Save the card
-      final saveResult = await CreditCardStorageService.instance.saveCard(creditCard);
+      // Save the card via Provider
+      final saveResult = await context.read<CreditCardProvider>().addCard(creditCard);
       
       if (saveResult.success) {
-        _showMessage(saveResult.message, false);
+        if (mounted) _showMessage(saveResult.message, false);
         _clearForm();
       } else {
-        _showMessage(saveResult.message, true);
+        if (mounted) _showMessage(saveResult.message, true);
       }
     } catch (e) {
-      _showMessage('An error occurred: ${e.toString()}', true);
+      if (mounted) _showMessage('An error occurred: ${e.toString()}', true);
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 

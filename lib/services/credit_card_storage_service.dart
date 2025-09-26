@@ -13,7 +13,6 @@ class CreditCardStorageService {
 
   CreditCardStorageService._();
 
-  // Get all stored credit cards
   Future<List<CreditCardModel>> getStoredCards() async {
     final prefs = await SharedPreferences.getInstance();
     final cardsJson = prefs.getString(_creditCardsKey);
@@ -26,11 +25,9 @@ class CreditCardStorageService {
     return [];
   }
 
-  // Save a credit card (with duplicate check)
   Future<CardSaveResult> saveCard(CreditCardModel card) async {
     final existingCards = await getStoredCards();
-    
-    // Check for duplicates
+
     final isDuplicate = existingCards.any((existingCard) => 
         existingCard.uniqueId == card.uniqueId);
     
@@ -42,11 +39,9 @@ class CreditCardStorageService {
         card: card,
       );
     }
-    
-    // Add the new card
+
     existingCards.add(card);
-    
-    // Save to storage
+
     final prefs = await SharedPreferences.getInstance();
     final cardsJson = json.encode(existingCards.map((c) => c.toJson()).toList());
     await prefs.setString(_creditCardsKey, cardsJson);
@@ -59,7 +54,7 @@ class CreditCardStorageService {
     );
   }
 
-  // Remove a credit card
+
   Future<bool> removeCard(String cardUniqueId) async {
     final existingCards = await getStoredCards();
     final initialLength = existingCards.length;
@@ -76,46 +71,39 @@ class CreditCardStorageService {
     return false;
   }
 
-  // Clear all stored cards
   Future<void> clearAllCards() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_creditCardsKey);
   }
 
-  // Get cards count
   Future<int> getCardsCount() async {
     final cards = await getStoredCards();
     return cards.length;
   }
 
-  // Check if card exists
   Future<bool> cardExists(String cardNumber) async {
     final cleanCardNumber = cardNumber.replaceAll(' ', '');
     final existingCards = await getStoredCards();
     return existingCards.any((card) => card.uniqueId == cleanCardNumber);
   }
 
-  // Get cards by type
   Future<List<CreditCardModel>> getCardsByType(CardType cardType) async {
     final allCards = await getStoredCards();
     return allCards.where((card) => card.cardType == cardType).toList();
   }
 
-  // Get cards by country
   Future<List<CreditCardModel>> getCardsByCountry(String country) async {
     final allCards = await getStoredCards();
     return allCards.where((card) => 
         card.issuingCountry.toLowerCase() == country.toLowerCase()).toList();
   }
 
-  // Get recent cards (last N cards)
   Future<List<CreditCardModel>> getRecentCards({int limit = 10}) async {
     final allCards = await getStoredCards();
     allCards.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return allCards.take(limit).toList();
   }
 
-  // Export cards data (for backup/admin purposes)
   Future<String> exportCardsData() async {
     final cards = await getStoredCards();
     final exportData = {
@@ -126,7 +114,6 @@ class CreditCardStorageService {
     return json.encode(exportData);
   }
 
-  // Get storage statistics
   Future<StorageStats> getStorageStats() async {
     final cards = await getStoredCards();
     final cardTypeStats = <CardType, int>{};

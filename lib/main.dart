@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'screens/home_screen.dart';
+import 'providers/credit_card_provider.dart';
 
 void main() {
   runApp(const CreditCardApp());
@@ -10,13 +12,16 @@ class CreditCardApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Credit Card Validator',
-      debugShowCheckedModeBanner: false,
-      theme: _buildLightTheme(),
-      darkTheme: _buildDarkTheme(),
-      themeMode: ThemeMode.dark,
-      home: const HomeScreen(),
+    return ChangeNotifierProvider(
+      create: (_) => CreditCardProvider()..loadAll(),
+      child: MaterialApp(
+        title: 'Credit Card Validator',
+        debugShowCheckedModeBanner: false,
+        theme: _buildLightTheme(),
+        darkTheme: _buildDarkTheme(),
+        themeMode: ThemeMode.dark,
+        home: const HomeScreen(),
+      ),
     );
   }
 
